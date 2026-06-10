@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KNZIE Savings Tracker</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #0f172a, #1e293b);
+      color: white;
+    }
+    .app {
+      max-width: 430px;
+      margin: auto;
+      min-height: 100vh;
+      padding: 18px;
+    }
+    .card {
+      background: rgba(255,255,255,.1);
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 22px;
+      padding: 18px;
+      margin-bottom: 16px;
+      box-shadow: 0 15px 40px rgba(0,0,0,.25);
+      backdrop-filter: blur(12px);
+    }
+    h1 { font-size: 24px; margin: 8px 0 4px; }
+    h2 { font-size: 18px; margin: 0 0 14px; }
+    p { color: #cbd5e1; margin-top: 0; }
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin: 16px 0;
+    }
+    button, input {
+      width: 100%;
+      border: none;
+      border-radius: 14px;
+      padding: 13px;
+      font-size: 14px;
+    }
+    button {
+      background: #334155;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button.active, .primary {
+      background: linear-gradient(135deg, #22c55e, #14b8a6);
+    }
+    input {
+      margin: 7px 0 12px;
+      background: #0f172a;
+      color: white;
+      border: 1px solid #475569;
+    }
+    label { font-size: 13px; color: #cbd5e1; }
+    .result {
+      font-size: 28px;
+      font-weight: 900;
+      margin-top: 8px;
+    }
+    .small { font-size: 13px; color: #cbd5e1; }
+    .page { display: none; }
+    .page.active { display: block; }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,.12);
+    }
+    .danger { background: #ef4444; }
+    .history {
+      max-height: 220px;
+      overflow: auto;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(34,197,94,.18);
+      border: 1px solid rgba(34,197,94,.45);
+      padding: 8px 12px;
+      border-radius: 999px;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="card">
+      <h1>💸 KNZIE Savings</h1>
+      <p>Catat tabungan, hitung target, pantau streak. Menyala abangkuh.</p>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="showPage('saldo', this)">Saldo</button>
+      <button class="tab" onclick="showPage('target', this)">Target</button>
+      <button class="tab" onclick="showPage('streak', this)">Streak</button>
+    </div>
+
+    <section id="saldo" class="page active">
+      <div class="card">
+        <h2>1. Hitung Saldo</h2>
+        <label>Nominal masuk / keluar</label>
+        <input id="amount" type="number" placeholder="Contoh: 10000">
+        <label>Catatan</label>
+        <input id="note" type="text" placeholder="Contoh: jajan ditahan / top up">
+        <button class="primary" onclick="addMoney()">+ Tambah Tabungan</button>
+        <br><br>
+        <button onclick="removeMoney()">- Kurangi Saldo</button>
+        <div class="result" id="balance">Rp0</div>
+        <p class="small">Semua data otomatis kesimpan di browser lu.</p>
+      </div>
+
+      <div class="card">
+        <h2>Catatan Transaksi</h2>
+        <div class="history" id="history"></div>
+        <br>
+        <button class="danger" onclick="resetAll()">Reset Semua</button>
+      </div>
+    </section>
+
+    <section id="target" class="page">
+      <div class="card">
+        <h2>2. Tabungan dan Perkiraan</h2>
+        <label>Target tabungan</label>
+        <input id="goal" type="number" placeholder="Contoh: 500000">
+        <label>Nabung per hari</label>
+        <input id="daily" type="number" placeholder="Contoh: 10000">
+        <button class="primary" onclick="calculateGoal()">Hitung Perkiraan</button>
+        <div class="result" id="goalResult">-</div>
+        <p class="small" id="goalText"></p>
+      </div>
+    </section>
+
+    <section id="streak" class="page">
+      <div class="card">
+        <h2>3. Streak Nabung</h2>
+        <p>Klik kalau hari ini lu berhasil nabung.</p>
+        <button class="primary" onclick="saveToday()">🔥 Catat Hari Ini</button>
+        <div class="badge" id="streakBox">Streak: 0 hari</div>
+        <p class="small" id="lastSaved"></p>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    let data = JSON.parse(localStorage.getItem("savingsData")) || {
+      balance: 0,
+      history: [],
+      streak: 0,
+      lastDate: ""
+    };
+
+    function rupiah(num) {
+      return new Intl.NumberFormat("id-ID", {
+        style: "currency",
+        currency: "IDR",
+        maximumFractionDigits: 0
+      }).format(num);
+    }
+
+    function save() {
+      localStorage.setItem("savingsData", JSON.stringify(data));
+      render();
+    }
+
+    function showPage(id, btn) {
+      document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+      document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      document.getElementById(id).classList.add("active");
+      btn.classList.add("active");
+    }
+
+    function getInputAmount() {
+      return Number(document.getElementById("amount").value || 0);
+    }
+
+    function addMoney() {
+      const amount = getInputAmount();
+      const note = document.getElementById("note").value || "Tabungan masuk";
+      if (amount <= 0) return alert("Nominalnya isi dulu bre.");
+      data.balance += amount;
+      data.history.unshift({ type: "+", amount, note, date: new Date().toLocaleString("id-ID") });
+      document.getElementById("amount").value = "";
+      document.getElementById("note").value = "";
+      save();
+    }
+
+    function removeMoney() {
+      const amount = getInputAmount();
+      const note = document.getElementById("note").value || "Saldo keluar";
+      if (amount <= 0) return alert("Nominalnya isi dulu bre.");
+      data.balance -= amount;
+      data.history.unshift({ type: "-", amount, note, date: new Date().toLocaleString("id-ID") });
+      document.getElementById("amount").value = "";
+      document.getElementById("note").value = "";
+      save();
+    }
+
+    function calculateGoal() {
+      const goal = Number(document.getElementById("goal").value || 0);
+      const daily = Number(document.getElementById("daily").value || 0);
+      if (goal <= 0 || daily <= 0) return alert("Target dan nabung per hari isi dulu.");
+      const remaining = Math.max(goal - data.balance, 0);
+      const days = Math.ceil(remaining / daily);
+      document.getElementById("goalResult").textContent = days === 0 ? "Target udah tembus 🔥" : days + " hari lagi";
+      document.getElementById("goalText").textContent =
+        "Sisa yang perlu dikumpulin: " + rupiah(remaining) + ". Saldo sekarang: " + rupiah(data.balance);
+    }
+
+    function saveToday() {
+      const today = new Date().toISOString().slice(0,10);
+      if (data.lastDate === today) return alert("Hari ini udah dicatat bre.");
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const y = yesterday.toISOString().slice(0,10);
+      data.streak = data.lastDate === y ? data.streak + 1 : 1;
+      data.lastDate = today;
+      save();
+    }
+
+    function resetAll() {
+      if (!confirm("Yakin reset semua data?")) return;
+      data = { balance: 0, history: [], streak: 0, lastDate: "" };
+      save();
+    }
+
+    function render() {
+      document.getElementById("balance").textContent = rupiah(data.balance);
+      document.getElementById("streakBox").textContent = "Streak: " + data.streak + " hari";
+      document.getElementById("lastSaved").textContent = data.lastDate ? "Terakhir nabung: " + data.lastDate : "Belum ada streak.";
+      document.getElementById("history").innerHTML = data.history.length
+        ? data.history.map(item => `
+          <div class="row">
+            <div>
+              <b>${item.type} ${rupiah(item.amount)}</b><br>
+              <span class="small">${item.note}</span>
+            </div>
+            <span class="small">${item.date}</span>
+          </div>
+        `).join("")
+        : "<p class='small'>Belum ada transaksi.</p>";
+    }
+
+    render();
+  </script>
+</body>
+</html>
